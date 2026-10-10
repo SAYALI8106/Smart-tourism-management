@@ -153,7 +153,7 @@ public class LoginForm extends JFrame {
         new Thread(() -> {
             try (Connection c = DBConnection.getConnection()) {
                 SwingUtilities.invokeLater(() -> {
-                    lblStatus.setText("System Status: Online (MySQL smart_tourism_db)");
+                    lblStatus.setText("System Status: Online");
                     lblStatus.setForeground(UITheme.COLOR_SUCCESS);
                 });
             } catch (Exception ex) {
