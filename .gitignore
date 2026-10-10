@@ -1,0 +1,15 @@
+# Eclipse metadata and build outputs
+bin/
+target/
+*.class
+
+# Local database configuration with sensitive passwords
+db.properties
+!db.properties.example
+
+# IDE specific files
+.metadata/
+.recommenders/
+*.log
+.DS_Store
+Thumbs.db
