@@ -16,6 +16,7 @@ import javax.swing.JTextField;
 import javax.swing.border.Border;
 import javax.swing.border.CompoundBorder;
 import javax.swing.border.EmptyBorder;
+import javax.swing.SwingConstants;
 import javax.swing.table.DefaultTableCellRenderer;
 import javax.swing.table.JTableHeader;
 
@@ -138,6 +139,8 @@ public final class UITheme {
 
     /**
      * Formats and styles a JTable with modern look.
+     * Enforces a custom opaque header renderer to guarantee column headers are always
+     * clearly visible across all Look and Feels (avoiding native white-on-white bug).
      */
     public static void formatTable(JTable table) {
         table.setFont(FONT_REGULAR);
@@ -152,7 +155,28 @@ public final class UITheme {
         header.setBackground(COLOR_PRIMARY_DARK);
         header.setForeground(Color.WHITE);
         header.setOpaque(true);
-        header.setPreferredSize(new Dimension(header.getWidth(), 32));
+        header.setPreferredSize(new Dimension(header.getWidth(), 34));
+        header.setReorderingAllowed(false);
+
+        // Custom Header Renderer ensuring dark teal background and crisp white text
+        header.setDefaultRenderer(new DefaultTableCellRenderer() {
+            @Override
+            public Component getTableCellRendererComponent(JTable tbl, Object value,
+                                                           boolean isSelected, boolean hasFocus,
+                                                           int row, int col) {
+                JLabel lbl = (JLabel) super.getTableCellRendererComponent(tbl, value, isSelected, hasFocus, row, col);
+                lbl.setOpaque(true);
+                lbl.setBackground(COLOR_PRIMARY_DARK); // Deep Teal #0F766E
+                lbl.setForeground(Color.WHITE);        // Crisp White Text #FFFFFF
+                lbl.setFont(new Font("Segoe UI", Font.BOLD, 12));
+                lbl.setHorizontalAlignment(SwingConstants.LEFT);
+                lbl.setBorder(BorderFactory.createCompoundBorder(
+                    BorderFactory.createMatteBorder(0, 0, 2, 1, new Color(13, 148, 136)),
+                    new EmptyBorder(6, 10, 6, 10)
+                ));
+                return lbl;
+            }
+        });
 
         // Default alternating row renderer
         table.setDefaultRenderer(Object.class, new DefaultTableCellRenderer() {

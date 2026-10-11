@@ -2,22 +2,28 @@ package smarttourism.presentation;
 
 import java.awt.BorderLayout;
 import java.awt.Color;
+import java.awt.Component;
 import java.awt.Dimension;
 import java.awt.FlowLayout;
 import java.awt.Font;
 import java.awt.GridBagConstraints;
 import java.awt.GridBagLayout;
+import java.awt.GridLayout;
 import java.awt.Insets;
 import java.sql.SQLException;
 import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.List;
 import javax.swing.BorderFactory;
 import javax.swing.Box;
 import javax.swing.BoxLayout;
+import javax.swing.DefaultListCellRenderer;
 import javax.swing.JButton;
 import javax.swing.JComboBox;
+import javax.swing.JDialog;
 import javax.swing.JFrame;
 import javax.swing.JLabel;
+import javax.swing.JList;
 import javax.swing.JOptionPane;
 import javax.swing.JPanel;
 import javax.swing.JScrollPane;
@@ -73,6 +79,9 @@ public class TouristDashboard extends JFrame {
     private JComboBox<Destination> cmbFilterDest;
     private JTable tblAttractions;
     private DefaultTableModel modelAttractions;
+
+    // Header
+    private JLabel lblHeaderSub;
 
     // Packages Tab
     private JTable tblPackages;
@@ -140,9 +149,8 @@ public class TouristDashboard extends JFrame {
         panel.setBackground(UITheme.COLOR_PRIMARY_DARK);
         panel.setBorder(new EmptyBorder(16, 24, 16, 24));
 
-        JPanel left = new JPanel();
-        left.setLayout(new BoxLayout(left, BoxLayout.Y_AXIS));
-        left.setBackground(UITheme.COLOR_PRIMARY_DARK);
+        JPanel left = new JPanel(new GridLayout(2, 1, 0, 4));
+        left.setOpaque(false);
 
         JLabel title = new JLabel("Smart Tourism Management System");
         title.setFont(UITheme.FONT_TITLE);
@@ -150,13 +158,12 @@ public class TouristDashboard extends JFrame {
 
         String greeting = "Welcome, " + (activeTourist != null ? activeTourist.getFullName() : "Tourist")
                         + " (" + (activeTourist != null ? activeTourist.getEmail() : "") + ")";
-        JLabel sub = new JLabel(greeting);
-        sub.setFont(UITheme.FONT_SUBTITLE);
-        sub.setForeground(new Color(204, 251, 241));
+        lblHeaderSub = new JLabel(greeting);
+        lblHeaderSub.setFont(UITheme.FONT_SUBTITLE);
+        lblHeaderSub.setForeground(new Color(204, 251, 241));
 
         left.add(title);
-        left.add(Box.createVerticalStrut(4));
-        left.add(sub);
+        left.add(lblHeaderSub);
 
         JPanel right = new JPanel(new FlowLayout(FlowLayout.RIGHT, 10, 0));
         right.setBackground(UITheme.COLOR_PRIMARY_DARK);
@@ -174,7 +181,7 @@ public class TouristDashboard extends JFrame {
         right.add(btnChangePass);
         right.add(btnLogout);
 
-        panel.add(left, BorderLayout.WEST);
+        panel.add(left, BorderLayout.CENTER);
         panel.add(right, BorderLayout.EAST);
         return panel;
     }
@@ -366,16 +373,20 @@ public class TouristDashboard extends JFrame {
         JPanel bar = UITheme.createCardPanel();
         bar.setLayout(new FlowLayout(FlowLayout.LEFT, 10, 6));
 
+        JButton btnPayBooking = UITheme.createPrimaryButton("Make Payment / Pay Now");
+        btnPayBooking.addActionListener(e -> payForSelectedBooking());
+
         JButton btnCancel = UITheme.createSecondaryButton("Cancel Selected Booking");
         btnCancel.addActionListener(e -> cancelSelectedBooking());
 
-        JButton btnRefresh = UITheme.createPrimaryButton("Refresh My Bookings");
+        JButton btnRefresh = UITheme.createSecondaryButton("Refresh My Bookings");
         btnRefresh.addActionListener(e -> loadMyBookings());
 
+        bar.add(btnPayBooking);
         bar.add(btnCancel);
         bar.add(btnRefresh);
 
-        String[] cols = {"Booking ID", "Tour Package", "Booking Date", "Travel Date", "People", "Status", "Estimated Total (₹)"};
+        String[] cols = {"Booking ID", "Tour Package", "Travel Date", "People", "Total Amount (₹)", "Paid (₹)", "Balance Due (₹)", "Status"};
         modelMyBookings = new DefaultTableModel(cols, 0) {
             @Override public boolean isCellEditable(int r, int c) { return false; }
         };
@@ -400,9 +411,13 @@ public class TouristDashboard extends JFrame {
         JPanel bar = UITheme.createCardPanel();
         bar.setLayout(new FlowLayout(FlowLayout.LEFT, 10, 6));
 
-        JButton btnRefresh = UITheme.createPrimaryButton("Refresh My Payments");
+        JButton btnMakePayment = UITheme.createPrimaryButton("Make a Payment");
+        btnMakePayment.addActionListener(e -> showMakePaymentDialog(null));
+
+        JButton btnRefresh = UITheme.createSecondaryButton("Refresh My Payments");
         btnRefresh.addActionListener(e -> loadMyPayments());
 
+        bar.add(btnMakePayment);
         bar.add(btnRefresh);
 
         String[] cols = {"Payment ID", "Booking ID", "Amount (₹)", "Payment Date", "Payment Method", "Status", "Refund Details"};
@@ -507,6 +522,7 @@ public class TouristDashboard extends JFrame {
         loadPackages();
         loadMyBookings();
         loadMyPayments();
+        updateHeaderWelcome();
     }
 
     private void loadDestinations() {
@@ -691,14 +707,51 @@ public class TouristDashboard extends JFrame {
 
         try {
             Booking b = bookingService.bookForCurrentTourist(p.getPackageId(), travelDate, people);
-            UITheme.showSuccess(this, "Booking Successful!\nBooking Reference #" + b.getBookingId() + " has been created.");
+            int choice = JOptionPane.showConfirmDialog(
+                this,
+                "Booking Confirmed!\n"
+                + "Booking Reference #" + b.getBookingId() + " for " + p.getPackageName() + " has been recorded.\n\n"
+                + "Calculated Amount: ₹" + String.format("%,.2f", b.getEstimatedAmount()) + "\n\n"
+                + "Would you like to make a payment now?",
+                "Booking Confirmed — Proceed to Payment",
+                JOptionPane.YES_NO_OPTION,
+                JOptionPane.QUESTION_MESSAGE
+            );
             loadMyBookings();
-            tabbedPane.setSelectedIndex(4); // Switch to My Bookings tab
+            loadMyPayments();
+            updateHeaderWelcome();
+            if (choice == JOptionPane.YES_OPTION) {
+                showMakePaymentDialog(b);
+            } else {
+                tabbedPane.setSelectedIndex(4); // Switch to My Bookings tab
+            }
         } catch (ValidationException ve) {
             UITheme.showError(this, ve.getMessage());
+        } catch (SQLException sqle) {
+            String msg = sqle.getMessage();
+            if (msg != null && (msg.contains("Travel date cannot be before booking date") || msg.contains("Number of people must be greater than zero"))) {
+                UITheme.showError(this, "Database Trigger Violation: " + msg);
+            } else {
+                UITheme.showError(this, "Database Error: " + sqle.getMessage());
+            }
         } catch (Exception ex) {
             UITheme.showError(this, "Booking Error: " + ex.getMessage());
         }
+    }
+
+    private void updateHeaderWelcome() {
+        if (activeTourist == null || lblHeaderSub == null) return;
+        new Thread(() -> {
+            int count = 0;
+            try {
+                count = bookingService.getTouristBookingCount(activeTourist.getUserId());
+            } catch (Exception ignored) {}
+            final int totalBookings = count;
+            SwingUtilities.invokeLater(() -> {
+                lblHeaderSub.setText("Welcome, " + activeTourist.getFullName()
+                    + " (" + activeTourist.getEmail() + ")  |  Total Bookings: " + totalBookings);
+            });
+        }).start();
     }
 
     private void loadMyBookings() {
@@ -708,14 +761,18 @@ public class TouristDashboard extends JFrame {
                 SwingUtilities.invokeLater(() -> {
                     modelMyBookings.setRowCount(0);
                     for (Booking b : list) {
+                        double total = b.getEstimatedAmount();
+                        double paid = paymentService.getCompletedPaymentAmountForBooking(b.getBookingId());
+                        double balance = Math.max(0.0, total - paid);
                         modelMyBookings.addRow(new Object[]{
                             b.getBookingId(),
                             b.getPackageName(),
-                            b.getBookingDate(),
                             b.getTravelDate(),
                             b.getNumberOfPeople(),
-                            b.getBookingStatus(),
-                            String.format("₹%,.2f", b.getEstimatedAmount())
+                            String.format("₹%,.2f", total),
+                            String.format("₹%,.2f", paid),
+                            String.format("₹%,.2f", balance),
+                            b.getBookingStatus()
                         });
                     }
                 });
@@ -723,6 +780,39 @@ public class TouristDashboard extends JFrame {
                 SwingUtilities.invokeLater(() -> UITheme.showError(this, "Could not load bookings: " + ex.getMessage()));
             }
         }).start();
+    }
+
+    private void payForSelectedBooking() {
+        int row = tblMyBookings.getSelectedRow();
+        if (row < 0) {
+            UITheme.showError(this, "Please select a booking from the table to make a payment.");
+            return;
+        }
+
+        int bookingId = (int) modelMyBookings.getValueAt(row, 0);
+        String status = (String) modelMyBookings.getValueAt(row, 7);
+
+        if ("Cancelled".equalsIgnoreCase(status)) {
+            UITheme.showError(this, "Cannot pay for a cancelled booking.");
+            return;
+        }
+
+        try {
+            Booking b = bookingService.getBookingById(bookingId);
+            if (b == null) {
+                UITheme.showError(this, "Booking #" + bookingId + " not found.");
+                return;
+            }
+            double paid = paymentService.getCompletedPaymentAmountForBooking(bookingId);
+            double total = b.getEstimatedAmount();
+            if (total > 0 && (total - paid) <= 0.01) {
+                UITheme.showSuccess(this, "Booking #" + bookingId + " is already fully paid!\nTotal Paid: ₹" + String.format("%,.2f", paid));
+                return;
+            }
+            showMakePaymentDialog(b);
+        } catch (Exception ex) {
+            UITheme.showError(this, "Error: " + ex.getMessage());
+        }
     }
 
     private void cancelSelectedBooking() {
@@ -733,7 +823,7 @@ public class TouristDashboard extends JFrame {
         }
 
         int bookingId = (int) modelMyBookings.getValueAt(row, 0);
-        String status = (String) modelMyBookings.getValueAt(row, 5);
+        String status = (String) modelMyBookings.getValueAt(row, 7);
 
         if ("Cancelled".equalsIgnoreCase(status)) {
             UITheme.showError(this, "This booking is already cancelled.");
@@ -754,6 +844,7 @@ public class TouristDashboard extends JFrame {
             bookingService.cancelBooking(bookingId);
             UITheme.showSuccess(this, "Booking #" + bookingId + " has been cancelled.");
             loadMyBookings();
+            updateHeaderWelcome();
         } catch (ValidationException ve) {
             UITheme.showError(this, ve.getMessage());
         } catch (Exception ex) {
@@ -785,6 +876,255 @@ public class TouristDashboard extends JFrame {
         }).start();
     }
 
+    private void showMakePaymentDialog(Booking defaultBooking) {
+        List<Booking> bookings;
+        try {
+            bookings = bookingService.getMyBookings();
+        } catch (Exception ex) {
+            UITheme.showError(this, "Could not load bookings: " + ex.getMessage());
+            return;
+        }
+
+        // Filter out Cancelled bookings
+        List<Booking> activeBookings = new ArrayList<>();
+        for (Booking b : bookings) {
+            if (!"Cancelled".equalsIgnoreCase(b.getBookingStatus())) {
+                activeBookings.add(b);
+            }
+        }
+
+        if (activeBookings.isEmpty()) {
+            UITheme.showError(this, "You have no active bookings available for payment.\nPlease book a tour package first.");
+            tabbedPane.setSelectedIndex(3); // Switch to Book a Package
+            return;
+        }
+
+        JDialog dlg = new JDialog(this, "Make Payment — Smart Tourism Portal", true);
+        dlg.setSize(520, 600);
+        dlg.setLocationRelativeTo(this);
+        dlg.setResizable(false);
+        dlg.getContentPane().setBackground(UITheme.COLOR_BG);
+        dlg.setLayout(new BorderLayout());
+
+        // Header Banner
+        JPanel headerPanel = new JPanel();
+        headerPanel.setLayout(new BoxLayout(headerPanel, BoxLayout.Y_AXIS));
+        headerPanel.setBackground(UITheme.COLOR_PRIMARY_DARK);
+        headerPanel.setBorder(new EmptyBorder(16, 20, 16, 20));
+
+        JLabel titleLbl = new JLabel("Make Tour Payment");
+        titleLbl.setFont(UITheme.FONT_TITLE);
+        titleLbl.setForeground(Color.WHITE);
+
+        JLabel subLbl = new JLabel("Secure Payment Processing — MySQL Smart Tourism DB");
+        subLbl.setFont(UITheme.FONT_SUBTITLE);
+        subLbl.setForeground(new Color(204, 251, 241));
+
+        headerPanel.add(titleLbl);
+        headerPanel.add(Box.createVerticalStrut(4));
+        headerPanel.add(subLbl);
+        dlg.add(headerPanel, BorderLayout.NORTH);
+
+        // Center Form Panel
+        JPanel centerPanel = new JPanel(new GridBagLayout());
+        centerPanel.setBackground(UITheme.COLOR_BG);
+        centerPanel.setBorder(new EmptyBorder(14, 18, 14, 18));
+
+        JPanel card = UITheme.createCardPanel();
+        card.setLayout(new GridBagLayout());
+        card.setPreferredSize(new Dimension(460, 480));
+
+        GridBagConstraints gbc = new GridBagConstraints();
+        gbc.fill = GridBagConstraints.HORIZONTAL;
+        gbc.insets = new Insets(5, 6, 5, 6);
+        gbc.weightx = 1.0;
+        gbc.gridx = 0;
+
+        // 1. Select Booking
+        JComboBox<Booking> cmbBookings = new JComboBox<>();
+        cmbBookings.setFont(UITheme.FONT_REGULAR);
+        for (Booking b : activeBookings) {
+            cmbBookings.addItem(b);
+        }
+        cmbBookings.setRenderer(new DefaultListCellRenderer() {
+            @Override
+            public Component getListCellRendererComponent(JList<?> list, Object value, int index, boolean isSelected, boolean cellHasFocus) {
+                super.getListCellRendererComponent(list, value, index, isSelected, cellHasFocus);
+                if (value instanceof Booking) {
+                    Booking b = (Booking) value;
+                    setText("Booking #" + b.getBookingId() + " - " + b.getPackageName() + " (" + b.getTravelDate() + ")");
+                }
+                return this;
+            }
+        });
+
+        // 2. Summary details panel
+        JPanel summaryPanel = new JPanel(new GridLayout(4, 2, 8, 4));
+        summaryPanel.setBackground(new Color(241, 245, 249));
+        summaryPanel.setBorder(BorderFactory.createCompoundBorder(
+            BorderFactory.createLineBorder(UITheme.COLOR_BORDER, 1),
+            new EmptyBorder(8, 10, 8, 10)
+        ));
+
+        JLabel lblPkg = new JLabel("-");
+        JLabel lblDatePeople = new JLabel("-");
+        JLabel lblTotal = new JLabel("₹0.00");
+        JLabel lblPaidBal = new JLabel("₹0.00");
+        lblPaidBal.setFont(new Font("Segoe UI", Font.BOLD, 13));
+        lblPaidBal.setForeground(new Color(15, 118, 110));
+
+        summaryPanel.add(new JLabel("Tour Package:"));
+        summaryPanel.add(lblPkg);
+        summaryPanel.add(new JLabel("Travel Date & People:"));
+        summaryPanel.add(lblDatePeople);
+        summaryPanel.add(new JLabel("Total Booking Amount:"));
+        summaryPanel.add(lblTotal);
+        summaryPanel.add(new JLabel("Remaining Balance Due:"));
+        summaryPanel.add(lblPaidBal);
+
+        // 3. Amount Field
+        JTextField txtAmount = UITheme.createTextField();
+
+        // 4. Payment Method (strictly following payment_chk_2 in MySQL schema)
+        String[] methods = {"UPI", "Credit Card", "Debit Card", "Net Banking", "Cash"};
+        JComboBox<String> cmbMethod = new JComboBox<>(methods);
+        cmbMethod.setFont(UITheme.FONT_REGULAR);
+
+        // 5. Method Details Panel
+        JPanel methodDetailsPanel = new JPanel(new BorderLayout(5, 5));
+        methodDetailsPanel.setOpaque(false);
+        JLabel lblDetailPrompt = new JLabel("UPI ID / Virtual Payment Address:");
+        lblDetailPrompt.setFont(UITheme.FONT_LABEL);
+        JTextField txtDetail = UITheme.createTextField();
+        txtDetail.setText((activeTourist != null ? activeTourist.getFirstName().toLowerCase() : "tourist") + "@okhdfcbank");
+        methodDetailsPanel.add(lblDetailPrompt, BorderLayout.NORTH);
+        methodDetailsPanel.add(txtDetail, BorderLayout.CENTER);
+
+        cmbMethod.addActionListener(e -> {
+            String m = (String) cmbMethod.getSelectedItem();
+            if ("UPI".equals(m)) {
+                lblDetailPrompt.setText("Enter UPI ID (e.g. tourist@upi, Google Pay, PhonePe):");
+                txtDetail.setText((activeTourist != null ? activeTourist.getFirstName().toLowerCase() : "tourist") + "@okhdfcbank");
+                txtDetail.setEnabled(true);
+            } else if ("Credit Card".equals(m) || "Debit Card".equals(m)) {
+                lblDetailPrompt.setText("Card Number (Simulation: 16 digits):");
+                txtDetail.setText("4532 8821 9912 3014");
+                txtDetail.setEnabled(true);
+            } else if ("Net Banking".equals(m)) {
+                lblDetailPrompt.setText("Bank Name / Portal:");
+                txtDetail.setText("State Bank of India (Net Banking)");
+                txtDetail.setEnabled(true);
+            } else {
+                lblDetailPrompt.setText("Counter Payment:");
+                txtDetail.setText("Payable at Smart Tourism Desk (Cash Receipt)");
+                txtDetail.setEnabled(false);
+            }
+        });
+
+        // Update function for selected booking
+        Runnable updateBookingSummary = () -> {
+            Booking sel = (Booking) cmbBookings.getSelectedItem();
+            if (sel != null) {
+                lblPkg.setText(sel.getPackageName());
+                lblDatePeople.setText(sel.getTravelDate() + " (" + sel.getNumberOfPeople() + " travelers)");
+                double total = sel.getEstimatedAmount();
+                double paid = paymentService.getCompletedPaymentAmountForBooking(sel.getBookingId());
+                double balance = Math.max(0.0, total - paid);
+                lblTotal.setText(String.format("₹%,.2f", total));
+                lblPaidBal.setText(String.format("₹%,.2f  (Paid: ₹%,.2f)", balance, paid));
+                txtAmount.setText(String.format("%.2f", balance > 0 ? balance : total));
+            }
+        };
+
+        cmbBookings.addActionListener(e -> updateBookingSummary.run());
+
+        // Preselect default booking if provided
+        if (defaultBooking != null) {
+            for (int i = 0; i < cmbBookings.getItemCount(); i++) {
+                if (cmbBookings.getItemAt(i).getBookingId() == defaultBooking.getBookingId()) {
+                    cmbBookings.setSelectedIndex(i);
+                    break;
+                }
+            }
+        }
+        updateBookingSummary.run();
+
+        // Buttons
+        JPanel btnPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 10, 0));
+        btnPanel.setOpaque(false);
+        JButton btnPay = UITheme.createPrimaryButton("Confirm & Pay");
+        JButton btnCancel = UITheme.createSecondaryButton("Cancel");
+        btnCancel.addActionListener(e -> dlg.dispose());
+
+        btnPay.addActionListener(e -> {
+            Booking sel = (Booking) cmbBookings.getSelectedItem();
+            if (sel == null) {
+                UITheme.showError(dlg, "Please select a booking to pay for.");
+                return;
+            }
+
+            double amt;
+            try {
+                amt = Double.parseDouble(txtAmount.getText().trim());
+            } catch (NumberFormatException nfe) {
+                UITheme.showError(dlg, "Please enter a valid numeric payment amount.");
+                return;
+            }
+
+            if (amt <= 0) {
+                UITheme.showError(dlg, "Payment amount must be greater than zero (Trigger: BeforePaymentInsert).");
+                return;
+            }
+
+            String selectedMethod = (String) cmbMethod.getSelectedItem();
+
+            try {
+                Payment p = paymentService.makeTouristPayment(sel.getBookingId(), amt, selectedMethod);
+                UITheme.showSuccess(dlg,
+                    "Payment Successful!\n\n"
+                    + "Payment Reference: #" + p.getPaymentId() + "\n"
+                    + "Booking Reference: #" + p.getBookingId() + " (" + sel.getPackageName() + ")\n"
+                    + "Amount Paid: ₹" + String.format("%,.2f", p.getAmount()) + "\n"
+                    + "Payment Method: " + p.getPaymentMethod() + "\n"
+                    + "Status: " + p.getPaymentStatus() + "\n\n"
+                    + "Your booking status has been updated to Confirmed!");
+                dlg.dispose();
+                loadMyBookings();
+                loadMyPayments();
+                updateHeaderWelcome();
+                tabbedPane.setSelectedIndex(5); // Switch to My Payments tab
+            } catch (ValidationException ve) {
+                UITheme.showError(dlg, ve.getMessage());
+            } catch (SQLException sqle) {
+                String msg = sqle.getMessage();
+                if (msg != null && msg.contains("Payment amount must be greater than zero")) {
+                    UITheme.showError(dlg, "Database Trigger Violation: Payment amount must be greater than zero.");
+                } else {
+                    UITheme.showError(dlg, "Database Error: " + sqle.getMessage());
+                }
+            } catch (Exception ex) {
+                UITheme.showError(dlg, "Error processing payment: " + ex.getMessage());
+            }
+        });
+
+        btnPanel.add(btnCancel);
+        btnPanel.add(btnPay);
+
+        // Layout rows in card
+        int r = 0;
+        gbc.gridy = r++; card.add(createFieldPanel("Select Booking *", cmbBookings), gbc);
+        gbc.gridy = r++; card.add(summaryPanel, gbc);
+        gbc.gridy = r++; card.add(createFieldPanel("Payment Amount (₹) *", txtAmount), gbc);
+        gbc.gridy = r++; card.add(createFieldPanel("Payment Method *", cmbMethod), gbc);
+        gbc.gridy = r++; card.add(methodDetailsPanel, gbc);
+        gbc.gridy = r++; card.add(Box.createVerticalStrut(6), gbc);
+        gbc.gridy = r++; card.add(btnPanel, gbc);
+
+        centerPanel.add(card);
+        dlg.add(centerPanel, BorderLayout.CENTER);
+        dlg.setVisible(true);
+    }
+
     private void performSaveProfile() {
         String fn = txtProfFirstName.getText();
         String ln = txtProfLastName.getText();
@@ -802,5 +1142,9 @@ public class TouristDashboard extends JFrame {
         } catch (Exception ex) {
             UITheme.showError(this, "Profile update error: " + ex.getMessage());
         }
+    }
+
+    public JTabbedPane getTabbedPane() {
+        return tabbedPane;
     }
 }

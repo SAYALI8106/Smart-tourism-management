@@ -57,6 +57,14 @@ public class BookingService {
         return b;
     }
 
+    /**
+     * Stored Function: CountTouristBookings from Assignment 7.
+     */
+    public int getTouristBookingCount(int touristId) throws ValidationException, SQLException {
+        SessionManager.requireLoggedIn();
+        return bookingDAO.countTouristBookings(touristId);
+    }
+
     public List<Booking> searchBookings(String query) throws ValidationException, SQLException {
         SessionManager.requireAdmin();
         if (query == null || query.trim().isEmpty()) {

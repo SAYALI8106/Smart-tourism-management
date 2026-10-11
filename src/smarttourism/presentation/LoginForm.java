@@ -64,14 +64,8 @@ public class LoginForm extends JFrame {
         titleLbl.setForeground(Color.WHITE);
         titleLbl.setAlignmentX(CENTER_ALIGNMENT);
 
-        JLabel subtitleLbl = new JLabel("Three-Tier Database Application Portal", SwingConstants.CENTER);
-        subtitleLbl.setFont(UITheme.FONT_SUBTITLE);
-        subtitleLbl.setForeground(new Color(204, 251, 241));
-        subtitleLbl.setAlignmentX(CENTER_ALIGNMENT);
-
         headerPanel.add(titleLbl);
         headerPanel.add(Box.createVerticalStrut(4));
-        headerPanel.add(subtitleLbl);
         add(headerPanel, BorderLayout.NORTH);
 
         // Center Card Panel

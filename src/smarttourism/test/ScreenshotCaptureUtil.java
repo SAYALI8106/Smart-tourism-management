@@ -51,6 +51,20 @@ public class ScreenshotCaptureUtil {
         User tourist = authService.login("aarav@example.com", "tourist123");
         captureFrame("5_tourist_dashboard.png", () -> new TouristDashboard(tourist), 1120, 720);
 
+        // 6. Tourist My Bookings
+        captureFrame("6_tourist_my_bookings.png", () -> {
+            TouristDashboard td = new TouristDashboard(tourist);
+            td.getTabbedPane().setSelectedIndex(4);
+            return td;
+        }, 1120, 720);
+
+        // 7. Tourist My Payments
+        captureFrame("7_tourist_my_payments.png", () -> {
+            TouristDashboard td = new TouristDashboard(tourist);
+            td.getTabbedPane().setSelectedIndex(5);
+            return td;
+        }, 1120, 720);
+
         System.out.println("=================================================");
         System.out.println("  All demonstration screenshots saved to: /screenshots");
         System.out.println("=================================================");
@@ -61,18 +75,20 @@ public class ScreenshotCaptureUtil {
         SwingUtilities.invokeAndWait(() -> {
             JFrame frame = supplier.get();
             frame.setSize(width, height);
-            frame.validate();
+            frame.setLocationRelativeTo(null);
+            frame.setVisible(true);
+            frame.toFront();
             holder[0] = frame;
         });
 
-        Thread.sleep(800); // Allow data threads to populate tables
+        Thread.sleep(1200); // Allow data threads to populate tables and UI to layout
 
         SwingUtilities.invokeAndWait(() -> {
             try {
                 JFrame frame = holder[0];
                 BufferedImage image = new BufferedImage(frame.getWidth(), frame.getHeight(), BufferedImage.TYPE_INT_RGB);
                 Graphics2D g2 = image.createGraphics();
-                frame.paint(g2);
+                frame.printAll(g2);
                 g2.dispose();
 
                 File out = new File(OUTPUT_DIR, filename);

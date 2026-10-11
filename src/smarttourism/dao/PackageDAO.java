@@ -1,5 +1,6 @@
 package smarttourism.dao;
 
+import java.sql.CallableStatement;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
@@ -131,5 +132,30 @@ public class PackageDAO {
             if (rs.next()) return rs.getInt("next_id");
         }
         return 211;
+    }
+
+    /**
+     * Stored Procedure using Cursor: DisplayTourPackages from Assignment 7.
+     */
+    public List<TourPackage> displayTourPackagesViaCursor() {
+        List<TourPackage> list = new ArrayList<>();
+        String sql = "{CALL DisplayTourPackages()}";
+        try (Connection c = DBConnection.getConnection();
+             CallableStatement cs = c.prepareCall(sql)) {
+            boolean hasRs = cs.execute();
+            while (hasRs) {
+                try (ResultSet rs = cs.getResultSet()) {
+                    while (rs.next()) {
+                        String name = rs.getString(1);
+                        double cost = rs.getDouble(2);
+                        list.add(new TourPackage(0, name, 0, cost));
+                    }
+                }
+                hasRs = cs.getMoreResults();
+            }
+        } catch (SQLException ignored) {
+            // Handled gracefully
+        }
+        return list;
     }
 }

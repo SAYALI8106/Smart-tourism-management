@@ -71,6 +71,102 @@ public class PaymentService {
     }
 
     /**
+     * Enables a tourist (or administrator on their behalf) to make a payment for a booking.
+     * Complies with:
+     * - PAYMENT schema & foreign keys (booking_id -> BOOKING, admin_id -> ADMINISTRATOR).
+     * - Payment methods: 'UPI', 'Cash', 'Credit Card', 'Debit Card', 'Net Banking'.
+     * - Payment triggers: BeforePaymentInsert (amount > 0).
+     * - Dynamic 3NF cost calculation: validates amount does not exceed remaining balance.
+     * - Automatic booking status progression: invokes stored procedure UpdateBookingStatus to set status to 'Confirmed'.
+     */
+    public Payment makeTouristPayment(int bookingId, double amount, String paymentMethod) throws ValidationException, SQLException {
+        SessionManager.requireLoggedIn();
+
+        Booking booking = bookingDAO.findById(bookingId);
+        if (booking == null) {
+            throw new ValidationException("Booking #" + bookingId + " not found.");
+        }
+
+        // Ownership enforcement: Tourists can only pay for their own bookings
+        if (SessionManager.isTourist()) {
+            if (booking.getTouristId() != SessionManager.getCurrentUserId()) {
+                throw new ValidationException("Access Denied: You cannot make a payment for another tourist's booking.");
+            }
+        }
+
+        if ("Cancelled".equalsIgnoreCase(booking.getBookingStatus())) {
+            throw new ValidationException("Cannot make payment: Booking #" + bookingId + " has been cancelled.");
+        }
+
+        if (amount <= 0) {
+            throw new ValidationException("Payment amount must be greater than zero (Trigger: BeforePaymentInsert).");
+        }
+
+        if (paymentMethod == null || !ALLOWED_METHODS.contains(paymentMethod.trim())) {
+            throw new ValidationException("Invalid payment method: '" + paymentMethod + "'. Allowed: " + ALLOWED_METHODS);
+        }
+
+        // Calculate remaining balance using GetCompletedPaymentAmount
+        double totalCost = booking.getEstimatedAmount();
+        double alreadyPaid = paymentDAO.getCompletedPaymentAmountFromFunction(bookingId);
+        double remainingBalance = Math.max(0.0, totalCost - alreadyPaid);
+
+        if (totalCost > 0 && remainingBalance <= 0.01) {
+            throw new ValidationException("Booking #" + bookingId + " is already fully paid (Total ₹" + String.format("%.2f", totalCost) + ").");
+        }
+
+        if (totalCost > 0 && amount > remainingBalance + 0.01) {
+            throw new ValidationException(String.format("Payment amount (₹%.2f) exceeds remaining balance (₹%.2f).", amount, remainingBalance));
+        }
+
+        // Determine administrator ID for FK requirement (Assignment 7 schema: admin_id NOT NULL -> ADMINISTRATOR)
+        int adminId = 9002; // Default system admin
+        List<User> admins = userDAO.findAllAdmins();
+        if (admins != null && !admins.isEmpty()) {
+            adminId = admins.get(0).getUserId();
+        }
+
+        int paymentId = paymentDAO.getNextPaymentId();
+        String today = java.time.LocalDate.now().toString();
+
+        Payment payment = new Payment(
+            paymentId,
+            bookingId,
+            adminId,
+            amount,
+            today,
+            paymentMethod.trim(),
+            null,
+            "Completed"
+        );
+
+        validatePayment(payment);
+        paymentDAO.insert(payment);
+
+        // Update booking status: if status was 'Pending', update to 'Confirmed' via procedure
+        if ("Pending".equalsIgnoreCase(booking.getBookingStatus())) {
+            try {
+                bookingDAO.updateStatus(bookingId, "Confirmed");
+            } catch (Exception ex) {
+                System.err.println("Notice: Could not auto-update booking status: " + ex.getMessage());
+            }
+        }
+
+        return payment;
+    }
+
+    /**
+     * Calculates the remaining unpaid balance for a booking using GetCompletedPaymentAmount.
+     */
+    public double getRemainingBalance(int bookingId) throws SQLException {
+        Booking b = bookingDAO.findById(bookingId);
+        if (b == null) return 0.0;
+        double total = b.getEstimatedAmount();
+        double paid = getCompletedPaymentAmountForBooking(bookingId);
+        return Math.max(0.0, total - paid);
+    }
+
+    /**
      * Records a new payment. Protected: Administrator only.
      */
     public void addPayment(Payment p) throws ValidationException, SQLException {

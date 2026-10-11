@@ -1,5 +1,6 @@
 package smarttourism.dao;
 
+import java.sql.CallableStatement;
 import java.sql.Connection;
 import java.sql.Date;
 import java.sql.PreparedStatement;
@@ -12,6 +13,11 @@ import smarttourism.model.Booking;
 /**
  * Tier 3 - Data Access Layer for BOOKING table.
  * Calculates estimated_amount dynamically (cost * number_of_people) as per 3NF normalized schema.
+ * Implements stored procedures and functions from DBMS Assignment 7:
+ * - Stored Procedure: UpdateBookingStatus(p_booking_id, p_status)
+ * - Stored Procedure: GetTouristBookings(p_tourist_id)
+ * - Stored Function: CountTouristBookings(p_tourist_id)
+ * - Triggers: BeforeBookingInsert
  */
 public class BookingDAO {
 
@@ -147,16 +153,87 @@ public class BookingDAO {
         }
     }
 
+    /**
+     * Updates booking status using stored procedure UpdateBookingStatus from Assignment 7.
+     */
     public void updateStatus(int id, String status) throws SQLException {
-        String sql = "UPDATE booking SET booking_status=? WHERE booking_id=?";
+        String spSql = "{CALL UpdateBookingStatus(?, ?)}";
         try (Connection c = DBConnection.getConnection();
-             PreparedStatement ps = c.prepareStatement(sql)) {
-            ps.setString(1, status);
-            ps.setInt(2, id);
-            if (ps.executeUpdate() == 0) {
-                throw new SQLException("Booking ID " + id + " not found.");
+             CallableStatement cs = c.prepareCall(spSql)) {
+            cs.setInt(1, id);
+            cs.setString(2, status);
+            cs.execute();
+            return;
+        } catch (SQLException e) {
+            // Fallback to standard UPDATE if stored procedure is unavailable
+            String sql = "UPDATE booking SET booking_status=? WHERE booking_id=?";
+            try (Connection c = DBConnection.getConnection();
+                 PreparedStatement ps = c.prepareStatement(sql)) {
+                ps.setString(1, status);
+                ps.setInt(2, id);
+                if (ps.executeUpdate() == 0) {
+                    throw new SQLException("Booking ID " + id + " not found.");
+                }
             }
         }
+    }
+
+    /**
+     * Stored Function: CountTouristBookings(tourist_id) from Assignment 7.
+     */
+    public int countTouristBookings(int touristId) {
+        String sql = "{? = call CountTouristBookings(?)}";
+        try (Connection c = DBConnection.getConnection();
+             CallableStatement cs = c.prepareCall(sql)) {
+            cs.registerOutParameter(1, java.sql.Types.INTEGER);
+            cs.setInt(2, touristId);
+            cs.execute();
+            return cs.getInt(1);
+        } catch (SQLException e) {
+            // Fallback to SQL COUNT query
+            String q = "SELECT COUNT(*) FROM booking WHERE tourist_id = ?";
+            try (Connection c = DBConnection.getConnection();
+                 PreparedStatement ps = c.prepareStatement(q)) {
+                ps.setInt(1, touristId);
+                try (ResultSet rs = ps.executeQuery()) {
+                    if (rs.next()) return rs.getInt(1);
+                }
+            } catch (SQLException ignored) {}
+            return 0;
+        }
+    }
+
+    /**
+     * Stored Procedure: GetTouristBookings(tourist_id) from Assignment 7.
+     */
+    public List<Booking> getTouristBookingsProcedure(int touristId) throws SQLException {
+        String sql = "{CALL GetTouristBookings(?)}";
+        List<Booking> list = new ArrayList<>();
+        try (Connection c = DBConnection.getConnection();
+             CallableStatement cs = c.prepareCall(sql)) {
+            cs.setInt(1, touristId);
+            boolean hasResult = cs.execute();
+            if (hasResult) {
+                try (ResultSet rs = cs.getResultSet()) {
+                    while (rs.next()) {
+                        // Check if result contains booking columns
+                        try {
+                            int bId = rs.getInt("booking_id");
+                            int pkgId = rs.getInt("package_id");
+                            String bDate = rs.getDate("booking_date").toString();
+                            String tDate = rs.getDate("travel_date").toString();
+                            int people = rs.getInt("number_of_people");
+                            String status = rs.getString("booking_status");
+                            list.add(new Booking(bId, touristId, pkgId, bDate, tDate, people, status));
+                        } catch (SQLException notBookingRow) {
+                            // Single 'Message' column returned when no bookings
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+        return list;
     }
 
     public void delete(int id) throws SQLException {

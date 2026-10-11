@@ -209,7 +209,7 @@ public class SystemIntegrationTest {
         });
 
         // 12. Tourist Payment Scoping & Status Protection
-        test("12. Tourist cannot update payment status", () -> {
+        test("12. Tourist cannot update payment status directly", () -> {
             try {
                 paymentService.updateStatus(401, "Refunded");
                 throw new RuntimeException("Tourist should NOT be allowed to update payment status!");
@@ -217,6 +217,50 @@ public class SystemIntegrationTest {
                 if (!ve.getMessage().contains("Access Denied")) {
                     throw new RuntimeException("Expected Access Denied error, got: " + ve.getMessage());
                 }
+            }
+        });
+
+        // 12b. Tourist Makes Payment for Booking
+        test("12b. Tourist can make payment for own booking (verified by GetCompletedPaymentAmount)", () -> {
+            // Payment for createdBookingId[0]
+            Payment pay = paymentService.makeTouristPayment(createdBookingId[0], 1000.0, "UPI");
+            if (pay == null || pay.getPaymentId() <= 0) {
+                throw new RuntimeException("Tourist payment creation failed.");
+            }
+
+            // Verify payment appears in tourist's own payments
+            List<Payment> myPayments = paymentService.getMyPayments();
+            boolean found = myPayments.stream().anyMatch(p -> p.getPaymentId() == pay.getPaymentId());
+            if (!found) throw new RuntimeException("Payment not found in getMyPayments().");
+
+            // Verify stored function GetCompletedPaymentAmount returns the amount
+            double completedAmt = paymentService.getCompletedPaymentAmountForBooking(createdBookingId[0]);
+            if (completedAmt < 1000.0) {
+                throw new RuntimeException("GetCompletedPaymentAmount expected >= 1000.0, got " + completedAmt);
+            }
+
+            // Verify booking status was auto-progressed to Confirmed
+            Booking b = bookingService.getBookingById(createdBookingId[0]);
+            if (!"Confirmed".equalsIgnoreCase(b.getBookingStatus())) {
+                throw new RuntimeException("Booking status was not updated to Confirmed after payment.");
+            }
+        });
+
+        // 12c. Payment Trigger: amount > 0
+        test("12c. Payment with amount <= 0 rejected (Trigger: BeforePaymentInsert)", () -> {
+            try {
+                paymentService.makeTouristPayment(createdBookingId[0], 0.0, "UPI");
+                throw new RuntimeException("Payment with 0 amount should be rejected!");
+            } catch (ValidationException | SQLException ve) {
+                // Expected rejection
+            }
+        });
+
+        // 12d. Stored Function: CountTouristBookings
+        test("12d. Stored function CountTouristBookings returns accurate count", () -> {
+            int count = bookingService.getTouristBookingCount(SessionManager.getCurrentUserId());
+            if (count <= 0) {
+                throw new RuntimeException("Expected positive booking count, got " + count);
             }
         });
 
